@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      aws-sdk:
+        patterns:
+          - '@aws-sdk/*'
+      cdk:
+        patterns:
+          - 'aws-cdk'
+          - 'aws-cdk-lib'
+          - 'constructs'
+      lint:
+        patterns:
+          - 'eslint*'
+          - '@eslint/*'
+          - '@stylistic/*'
+          - 'typescript-eslint'
+      test:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
