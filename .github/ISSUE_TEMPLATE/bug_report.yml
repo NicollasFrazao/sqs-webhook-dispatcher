@@ -1,0 +1,42 @@
+name: Bug report
+description: A delivery is handled differently from what the README documents.
+title: 'fix: '
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The job on the queue, what the receiver answered, and what happened to the message (delivered, retried, dead-lettered, lost).
+      placeholder: |
+        Job {"deliveryId":"d-1","url":"https://...","event":"order.paid","payload":{}}
+        Receiver answered 429 with Retry-After: 120 -> message was dead-lettered on attempt 1
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Which row of the README's outcome table, or which design decision, this contradicts.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Ideally a failing test against createDispatcher or deliver; otherwise the job, the receiver's responses and the configuration.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      placeholder: e.g. 1a2b3c4
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The dispatcher's JSON log lines for the delivery (CloudWatch), with secrets and customer data removed.
+      render: json

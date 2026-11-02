@@ -15,5 +15,5 @@
     "verbatimModuleSyntax": true,
     "noEmit": true
   },
-  "include": ["src", "test", "infra"]
+  "include": ["src", "test", "infra", "vitest.config.ts", "eslint.config.js"]
 }
