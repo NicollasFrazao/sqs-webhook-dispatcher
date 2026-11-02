@@ -94,13 +94,16 @@ src/
   domain/signature.ts   HMAC signing and verification
   domain/delivery.ts    job parsing and one delivery attempt → outcome
   dispatcher.ts         SQS batch handling: retry, dead-letter, partial failures
-  handler.ts            Lambda entry point: AWS clients and configuration
+  adapters/aws.ts       the queue port on SQS, the signing secret from Secrets Manager
+  adapters/config.ts    settings from the environment
+  handler.ts            Lambda entry point: wires the adapters into the dispatcher
 infra/
   stack.ts              CDK stack: queues, function, secret, alarm
 test/                   Vitest unit tests and CDK template assertions
+.context/               context base for people and coding agents (start at .context/docs/README.md)
 ```
 
-The domain code has no AWS dependency; the dispatcher talks to SQS through a two-method port, which is what keeps the tests fast and free of mocks of the AWS SDK.
+The domain code has no AWS dependency; the dispatcher talks to SQS through a two-method port, which is what keeps the tests fast and free of mocks of the AWS SDK. These layer rules are checked in CI by dependency-cruiser.
 
 ## Running it
 
@@ -108,11 +111,12 @@ Requirements: Node.js 22 and, to deploy, AWS credentials with a [bootstrapped](h
 
 ```bash
 npm ci
-npm run typecheck
 npm test
 npm run synth     # builds the bundle and the CloudFormation template
 npm run deploy    # creates the stack in your account
 ```
+
+The quality gate — lint (with `sonarjs` and TSDoc rules, no warnings allowed), typecheck, layer rules, unused code, tests with 80% coverage, synth and the context check — is one CI job per check; [CONTRIBUTING.md](CONTRIBUTING.md) lists the commands.
 
 Configuration (environment variables of the function, set by the stack):
 
