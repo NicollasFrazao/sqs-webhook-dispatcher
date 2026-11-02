@@ -7,7 +7,7 @@ import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
-import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import type { Construct } from 'constructs';
 
 const DEFAULT_MAX_ATTEMPTS = 8;
@@ -26,7 +26,13 @@ export interface WebhookDispatcherStackProps extends StackProps {
   readonly maxAttempts?: number;
 }
 
-/** The whole dispatcher: delivery queue, dead-letter queue, function, signing secret and alarm. */
+/**
+ * The whole dispatcher: delivery queue, dead-letter queue, function, signing secret and alarm.
+ *
+ * @remarks
+ * Both queues use SQS-managed server-side encryption (SSE-SQS), stated explicitly so the template
+ * says what the account default would otherwise decide.
+ */
 export class WebhookDispatcherStack extends Stack {
   constructor(
     scope: Construct,
@@ -46,6 +52,7 @@ export class WebhookDispatcherStack extends Stack {
       this,
       'DeadLetterQueue',
       {
+        encryption: QueueEncryption.SQS_MANAGED,
         retentionPeriod: Duration.days(DEAD_LETTER_RETENTION_DAYS),
       },
     );
@@ -54,6 +61,7 @@ export class WebhookDispatcherStack extends Stack {
       this,
       'DeliveryQueue',
       {
+        encryption: QueueEncryption.SQS_MANAGED,
         visibilityTimeout: Duration.seconds(functionTimeout.toSeconds() * VISIBILITY_TIMEOUT_FACTOR),
         retentionPeriod: Duration.days(DELIVERY_RETENTION_DAYS),
         // Safety net only: the function dead-letters on its own, with a reason. This catches

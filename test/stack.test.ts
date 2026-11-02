@@ -70,4 +70,13 @@ describe('WebhookDispatcherStack', () => {
     expect(policies).toContain('secretsmanager:GetSecretValue');
   });
 
+  it('encrypts both queues with SQS-managed keys', () => {
+    const queues = Object.values(template.findResources('AWS::SQS::Queue'));
+
+    expect(queues).toHaveLength(2);
+
+    for (const queue of queues) {
+      expect(queue).toMatchObject({ Properties: { SqsManagedSseEnabled: true } });
+    }
+  });
 });
