@@ -3,10 +3,13 @@ import type { SQSBatchItemFailure, SQSBatchResponse, SQSEvent, SQSRecord } from 
 import { type BackoffPolicy, retryDelaySeconds } from './domain/backoff.js';
 import { type DeliverDeps, type WebhookJob, deliver, parseJob } from './domain/delivery.js';
 
+/** Retry budget and timing of the dispatcher, read from the function's environment. */
 export interface DispatcherConfig {
   /** Attempts before a delivery is given up and moved to the dead-letter queue. */
   readonly maxAttempts: number;
+  /** Spacing of the retries, see {@link retryDelaySeconds}. */
   readonly backoff: BackoffPolicy;
+  /** Timeout of each request to the receiver, in milliseconds. */
   readonly requestTimeoutMs: number;
 }
 
@@ -18,17 +21,32 @@ export interface QueuePort {
   deadLetter(body: string, reason: string, attempt: number): Promise<void>;
 }
 
+/**
+ * Everything the dispatcher talks to, injected so tests run without AWS or a network.
+ *
+ * @remarks
+ * The optional members default to the real clock, `Math.random` and JSON lines on stdout
+ * (which Lambda ships to CloudWatch Logs).
+ */
 export interface DispatcherDeps {
   readonly config: DispatcherConfig;
   readonly queue: QueuePort;
+  /** Called once per batch; the caller decides how to cache it. */
   readonly signingSecret: () => Promise<string>;
   readonly fetch: typeof globalThis.fetch;
+  /** Current time in unix seconds. */
   readonly nowSeconds?: () => number;
+  /** Source of randomness in [0, 1) for the backoff jitter. */
   readonly random?: () => number;
+  /** Receives one structured entry per outcome. */
   readonly log?: (entry: Record<string, unknown>) => void;
 }
 
-const defaultLog = (entry: Record<string, unknown>): void => console.log(JSON.stringify(entry));
+const MILLISECONDS_PER_SECOND = 1000;
+
+const defaultLog = (entry: Record<string, unknown>): void => {
+  console.log(JSON.stringify(entry));
+};
 
 /**
  * Builds the Lambda handler for an SQS event source with `reportBatchItemFailures` enabled.
@@ -39,12 +57,13 @@ const defaultLog = (entry: Record<string, unknown>): void => console.log(JSON.st
  * removed from the queue: delivered, or moved to the dead-letter queue with a reason.
  */
 export function createDispatcher(deps: DispatcherDeps): (event: SQSEvent) => Promise<SQSBatchResponse> {
-  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000));
+  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / MILLISECONDS_PER_SECOND));
   const random = deps.random ?? Math.random;
   const log = deps.log ?? defaultLog;
 
   return async (event) => {
     const secret = await deps.signingSecret();
+
     const deliverDeps: DeliverDeps = {
       fetch: deps.fetch,
       signingSecret: secret,
@@ -61,51 +80,113 @@ export function createDispatcher(deps: DispatcherDeps): (event: SQSEvent) => Pro
       const retryLater: SQSBatchItemFailure = { itemIdentifier: record.messageId };
 
       let job: WebhookJob;
+
       try {
         job = parseJob(record.body);
       } catch (error) {
         return giveUp(`invalid job: ${(error as Error).message}`);
       }
 
-      const outcome = await deliver(job, attempt, deliverDeps);
-      const context = { deliveryId: job.deliveryId, event: job.event, attempt };
+      const outcome = await deliver(
+        job,
+        attempt,
+        deliverDeps,
+      );
+
+      const context = {
+        deliveryId: job.deliveryId,
+        event: job.event,
+        attempt,
+      };
 
       switch (outcome.kind) {
         case 'delivered':
-          log({ level: 'info', msg: 'delivered', ...context, status: outcome.status });
+          log({
+            level: 'info',
+            msg: 'delivered',
+            ...context,
+            status: outcome.status,
+          });
+
           return null;
 
         case 'rejected':
-          return giveUp(outcome.reason, context);
+          return giveUp(
+            outcome.reason,
+            context,
+          );
 
         case 'retry': {
           if (attempt >= deps.config.maxAttempts) {
-            return giveUp(`gave up after ${attempt} attempts, last: ${outcome.reason}`, context);
+            return giveUp(
+              `gave up after ${attempt} attempts, last: ${outcome.reason}`,
+              context,
+            );
           }
 
-          const delay = outcome.retryAfterSeconds ?? retryDelaySeconds(attempt, deps.config.backoff, random);
+          const delay = outcome.retryAfterSeconds ?? retryDelaySeconds(
+            attempt,
+            deps.config.backoff,
+            random,
+          );
+
           try {
-            await deps.queue.delay(record.receiptHandle, delay);
+            await deps.queue.delay(
+              record.receiptHandle,
+              delay,
+            );
           } catch (error) {
             // The message still comes back, only after the queue's default visibility timeout.
-            log({ level: 'warn', msg: 'could not set retry delay', ...context, error: String(error) });
+            log({
+              level: 'warn',
+              msg: 'could not set retry delay',
+              ...context,
+              error: String(error),
+            });
           }
 
-          log({ level: 'warn', msg: 'retry scheduled', ...context, reason: outcome.reason, delaySeconds: delay });
+          log({
+            level: 'warn',
+            msg: 'retry scheduled',
+            ...context,
+            reason: outcome.reason,
+            delaySeconds: delay,
+          });
+
           return retryLater;
         }
       }
 
-      async function giveUp(reason: string, extra: Record<string, unknown> = {}): Promise<SQSBatchItemFailure | null> {
+      async function giveUp(
+        reason: string,
+        extra: Record<string, unknown> = {},
+      ): Promise<SQSBatchItemFailure | null> {
         try {
-          await deps.queue.deadLetter(record.body, reason, attempt);
+          await deps.queue.deadLetter(
+            record.body,
+            reason,
+            attempt,
+          );
         } catch (error) {
           // Never drop a message we could not park: leave it on the queue and try again.
-          log({ level: 'error', msg: 'dead-letter failed', messageId: record.messageId, error: String(error) });
+          log({
+            level: 'error',
+            msg: 'dead-letter failed',
+            messageId: record.messageId,
+            error: String(error),
+          });
+
           return retryLater;
         }
 
-        log({ level: 'error', msg: 'dead-lettered', messageId: record.messageId, reason, ...extra });
+        log({
+          level: 'error',
+          msg: 'dead-lettered',
+          messageId: record.messageId,
+          reason,
+          ...extra,
+        });
+
         return null;
       }
     }

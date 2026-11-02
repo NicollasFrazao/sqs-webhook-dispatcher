@@ -1,68 +1,25 @@
-import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
-import { ChangeMessageVisibilityCommand, SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { SQSClient } from '@aws-sdk/client-sqs';
 
+import { cachedSigningSecret, createSqsQueue } from './adapters/aws.js';
+import { loadSettings } from './adapters/config.js';
 import { createDispatcher } from './dispatcher.js';
 
-/** Lambda entry point: reads configuration from the environment and wires the AWS clients. */
+// Composition root: the only module that reads `process.env` and creates AWS clients.
+// Everything it wires is tested on its own; `npm run synth` bundles it.
 
-function env(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (value === undefined) {
-    throw new Error(`missing environment variable ${name}`);
-  }
-  return value;
-}
+const settings = loadSettings(process.env);
 
-const sqs = new SQSClient({});
-const secrets = new SecretsManagerClient({});
-
-const queueUrl = env('QUEUE_URL');
-const deadLetterQueueUrl = env('DEAD_LETTER_QUEUE_URL');
-const secretArn = env('SIGNING_SECRET_ARN');
-
-let cachedSecret: Promise<string> | undefined;
-
+/** Lambda entry point for the SQS event source of the delivery queue. */
 export const handler = createDispatcher({
-  config: {
-    maxAttempts: Number(env('MAX_ATTEMPTS', '8')),
-    backoff: {
-      baseSeconds: Number(env('BACKOFF_BASE_SECONDS', '30')),
-      maxSeconds: Number(env('BACKOFF_MAX_SECONDS', '3600')),
-    },
-    requestTimeoutMs: Number(env('REQUEST_TIMEOUT_MS', '10000')),
-  },
+  config: settings.dispatcher,
   fetch: globalThis.fetch,
-  // Fetched once per container; a failed fetch is not cached, so the next invocation retries.
-  signingSecret: () => {
-    cachedSecret ??= secrets
-      .send(new GetSecretValueCommand({ SecretId: secretArn }))
-      .then(({ SecretString }) => {
-        if (!SecretString) throw new Error('signing secret is empty');
-        return SecretString;
-      })
-      .catch((error: unknown) => {
-        cachedSecret = undefined;
-        throw error;
-      });
-    return cachedSecret;
-  },
-  queue: {
-    async delay(receiptHandle, seconds) {
-      await sqs.send(
-        new ChangeMessageVisibilityCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle, VisibilityTimeout: seconds }),
-      );
-    },
-    async deadLetter(body, reason, attempt) {
-      await sqs.send(
-        new SendMessageCommand({
-          QueueUrl: deadLetterQueueUrl,
-          MessageBody: body,
-          MessageAttributes: {
-            reason: { DataType: 'String', StringValue: reason.slice(0, 1024) },
-            attempts: { DataType: 'Number', StringValue: String(attempt) },
-          },
-        }),
-      );
-    },
-  },
+  signingSecret: cachedSigningSecret(
+    new SecretsManagerClient({}),
+    settings.signingSecretArn,
+  ),
+  queue: createSqsQueue(
+    new SQSClient({}),
+    settings,
+  ),
 });

@@ -10,4 +10,8 @@ const env: Environment = {
   ...(process.env.CDK_DEFAULT_REGION && { region: process.env.CDK_DEFAULT_REGION }),
 };
 
-new WebhookDispatcherStack(app, 'WebhookDispatcher', { env });
+new WebhookDispatcherStack(
+  app,
+  'WebhookDispatcher',
+  { env },
+);
