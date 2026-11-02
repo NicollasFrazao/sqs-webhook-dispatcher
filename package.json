@@ -10,25 +10,48 @@
     "node": ">=22"
   },
   "scripts": {
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run --project unit",
+    "test:tooling": "vitest run --project tooling",
+    "test:coverage": "vitest run --coverage",
+    "check:architecture": "depcruise src infra test --config .dependency-cruiser.cjs",
+    "check:unused": "knip",
+    "check:context": "node scripts/check-context-surfaces.mjs",
+    "export:context": "node scripts/check-context-surfaces.mjs --write",
     "synth": "cdk synth --quiet",
-    "deploy": "cdk deploy"
+    "deploy": "cdk deploy",
+    "prepare": "husky"
   },
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "3.1152.0",
     "@aws-sdk/client-sqs": "3.1152.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@eslint/js": "10.0.1",
+    "@stylistic/eslint-plugin": "5.10.0",
     "@types/aws-lambda": "8.10.164",
     "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "4.1.12",
     "aws-cdk": "2.1145.0",
     "aws-cdk-lib": "2.273.0",
     "constructs": "10.8.1",
+    "dependency-cruiser": "18.7.0",
     "esbuild": "0.28.2",
+    "eslint": "10.14.0",
+    "eslint-plugin-jsdoc": "65.4.2",
+    "eslint-plugin-sonarjs": "4.2.2",
+    "globals": "17.14.0",
+    "husky": "9.1.7",
+    "knip": "6.44.1",
+    "lint-staged": "17.6.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
     "vitest": "4.1.12"
   }
 }

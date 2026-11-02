@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/handler.ts",
+    "infra/app.ts",
+    "scripts/*.mjs"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "infra/**/*.ts",
+    "test/**/*.ts",
+    "eslint-rules/**/*.mjs",
+    "scripts/**/*.mjs"
+  ],
+  "ignoreDependencies": [
+    // Run by the CDK CLI, not imported: cdk.json starts the app with `npx tsx infra/app.ts`,
+    // and NodejsFunction bundles src/handler.ts with the local esbuild (Docker otherwise).
+    "tsx",
+    "esbuild"
+  ]
+}
